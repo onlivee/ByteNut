@@ -244,14 +244,13 @@ class BytenutRenewal:
         """将 API 返回的时间字符串转换为统一的美观格式"""
         if not dt_str:
             return ""
-        # 支持两种常见格式
         for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
             try:
                 dt = datetime.strptime(dt_str, fmt)
                 return dt.strftime("%b %d, %Y, %I:%M %p UTC")
             except ValueError:
                 continue
-        return dt_str  # 无法解析则返回原字符串
+        return dt_str
 
     def wait_until_running(self, sb, server_id, timeout=300, interval=10):
         deadline = time.time() + timeout
@@ -272,6 +271,20 @@ class BytenutRenewal:
                 if srv.get("id") == server_id:
                     state = srv.get("serverInfo", {}).get("state", "unknown")
         return False, state
+
+    # ---------- 等待续期生效 ----------
+    def wait_until_not_expired(self, sb, server_id, timeout=120, interval=10):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            ext_info = self.get_extension_data(sb, server_id)
+            if ext_info:
+                mins = ext_info.get("minutesUntilExpiration", 0)
+                if mins > 0:
+                    self.log(f"续期生效，距离过期: {mins} 分钟")
+                    return True
+            time.sleep(interval)
+        self.log("⚠️ 等待续期生效超时")
+        return False
 
     def run(self):
         self.log("🚀 开始执行 ByteNut 续期与开机")
@@ -346,10 +359,18 @@ class BytenutRenewal:
                             sb.click(RENEW_MENU)
                             time.sleep(3)
                             if self.click_extend_button(sb):
-                                self.log("✅ 续期成功，准备开机")
+                                self.log("✅ 续期成功，等待状态更新...")
+                                if not self.wait_until_not_expired(sb, server_id):
+                                    self.send_tg("⚠️", "续期成功但状态未更新", user, server_id,
+                                                 "offline", expiry_str,
+                                                 "续期后服务器状态仍未刷新，无法开机，请稍后重试",
+                                                 screenshot=self.shot(sb, f"start_fail_{idx}.png"))
+                                    continue
+
                                 new_ext = self.get_extension_data(sb, server_id)
                                 new_expiry = new_ext.get("expiredTime", "") if new_ext else ""
                                 new_expiry_str = self.format_expiry(new_expiry)
+
                                 if self.api_start_server(sb, server_id):
                                     is_running, final_state = self.wait_until_running(sb, server_id)
                                     if is_running:
