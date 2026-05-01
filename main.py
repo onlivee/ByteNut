@@ -176,41 +176,30 @@ class BytenutRenewal:
         referer = f"https://www.bytenut.com/free-gamepanel/{server_id}"
         result = self.call_api_post(sb, API_START_SERVER.format(server_id), referer=referer)
         if result:
-            self.log(f"开机请求已发送: {result.get('statusMessage')}")
+            self.log("开机请求已发送")
             return True
         return False
 
-    # ---------- 清除遮挡广告 ----------
+    # ---------- 移除遮挡广告 ----------
     def remove_overlay_ads(self, sb):
-        """注入 JS 移除各类广告遮挡元素，确保 Turnstile 可见"""
         try:
             sb.execute_script("""
                 (function() {
-                    // 移除常见的广告容器、弹窗、固定底部栏等
                     var selectors = [
-                        'ins.adsbygoogle',
-                        'iframe[id^="aswift"]',
-                        'div[id^="google_ads"]',
-                        'div[class*="ad-"]',
-                        'div[class*="ads-"]',
-                        'div[id*="ad-"]',
-                        'div[id*="ads-"]',
-                        '.ad-container',
-                        '.ads-wrapper',
-                        '.fixed-bottom-banner',
-                        '.ezoic-floating-bottom',
-                        '.fc-ab-root',
-                        '[class*="overlay"]',
-                        '[class*="popup"]',
-                        '[id*="popup"]',
-                        '.modal-backdrop'
+                        'ins.adsbygoogle', 'iframe[id^="aswift"]', 'div[id^="google_ads"]',
+                        'div[class*="ad-"]:not([class*="adsterra-rewarded"])', 'div[class*="ads-"]',
+                        'div[id*="ad-"]:not([id*="adsterra"])', 'div[id*="ads-"]',
+                        '.ad-container', '.ads-wrapper', '.fixed-bottom-banner',
+                        '.ezoic-floating-bottom', '.fc-ab-root'
                     ];
                     selectors.forEach(function(s) {
                         document.querySelectorAll(s).forEach(function(el) {
-                            // 不删除包含 Turnstile 或续期相关内容的元素
                             if (el.innerHTML.indexOf('turnstile') !== -1 ||
                                 el.innerHTML.indexOf('cf-turnstile') !== -1 ||
-                                el.innerHTML.indexOf('extend-btn') !== -1) {
+                                el.innerHTML.indexOf('extend-btn') !== -1 ||
+                                el.innerHTML.indexOf('adsterra-rewarded') !== -1 ||
+                                el.innerHTML.indexOf('Claim Reward') !== -1 ||
+                                el.innerHTML.indexOf('Watch Ad') !== -1) {
                                 return;
                             }
                             el.style.display = 'none';
@@ -219,16 +208,14 @@ class BytenutRenewal:
                             el.width = '0px';
                         });
                     });
-                    // 强制恢复 body 滚动，防止 position: fixed 的影响
                     document.body.style.overflow = 'auto';
                     document.body.style.position = 'static';
                 })();
             """)
-            self.log("🗑️ 已尝试移除广告遮挡元素")
-        except Exception as e:
-            self.log(f"移除遮挡元素失败: {e}")
+        except:
+            pass
 
-    # ---------- Turnstile 处理（加入滚动与遮挡清除） ----------
+    # ---------- Turnstile 处理 ----------
     def is_turnstile_present(self, sb):
         try:
             return sb.execute_script("""
@@ -241,15 +228,12 @@ class BytenutRenewal:
 
     def wait_turnstile(self, sb, timeout=60):
         if not self.is_turnstile_present(sb):
-            self.log("ℹ️ 无 Turnstile 验证")
             return True
         self.log("⏳ 等待 Turnstile 验证...")
         start = time.time()
         last_click = 0
         while time.time() - start < timeout:
-            # 清除广告遮挡
             self.remove_overlay_ads(sb)
-            # 滚动到 Turnstile 可见区域
             try:
                 sb.execute_script("""
                     var elem = document.querySelector('.cf-turnstile');
@@ -262,7 +246,7 @@ class BytenutRenewal:
                     """return document.querySelector("input[name='cf-turnstile-response']")?.value || "";"""
                 )
                 if len(val) > 20:
-                    self.log("✅ Turnstile 完成")
+                    self.log("✅ Turnstile 通过")
                     return True
             except:
                 pass
@@ -272,68 +256,85 @@ class BytenutRenewal:
                     sb.uc_gui_click_captcha()
                     last_click = now
                 except:
-                    # 备用方案：直接点击 .cf-turnstile 元素
-                    try:
-                        elem = sb.find_element('.cf-turnstile')
-                        elem.click()
-                        last_click = now
-                    except:
-                        pass
+                    pass
             time.sleep(1)
         self.log("⚠️ Turnstile 超时")
         return False
 
-    # ---------- 改进的续期点击与验证 ----------
+    # ---------- 处理广告验证弹窗 ----------
+    def handle_ad_verification(self, sb):
+        """处理广告验证弹窗，成功返回 True"""
+        try:
+            # 检测弹窗
+            if not sb.execute_script("return !!document.querySelector('div.adsterra-rewarded-dialog');"):
+                return True
+            self.log("🛡️ 处理广告验证...")
+            time.sleep(1)
+
+            # 点击 Watch Ad
+            sb.execute_script("""
+                var btn = document.querySelector('div.adsterra-rewarded-dialog button.el-button--primary');
+                if(btn) btn.click();
+            """)
+            time.sleep(3)
+
+            # 处理新窗口
+            original_window = sb.driver.current_window_handle
+            if len(sb.driver.window_handles) > 1:
+                for handle in sb.driver.window_handles:
+                    if handle != original_window:
+                        sb.driver.switch_to.window(handle)
+                        break
+                time.sleep(12)  # 广告要求停留10秒，稍加缓冲
+                sb.driver.close()
+                sb.driver.switch_to.window(original_window)
+                time.sleep(2)
+
+            # 点击 Claim Reward
+            sb.execute_script("""
+                var btn = document.querySelector('div.adsterra-rewarded-dialog button.el-button--success');
+                if(btn) btn.click();
+            """)
+            time.sleep(3)
+            self.log("✅ 广告验证完成")
+            return True
+        except Exception as e:
+            self.log(f"广告验证异常: {e}")
+            return True  # 让流程继续
+
+    # ---------- 续期点击与验证 ----------
     def try_extend_and_verify(self, sb, server_id, old_expiry):
         if not self.wait_turnstile(sb):
-            self.log("Turnstile 未通过")
             return False, ""
 
-        # 点击前再清除一次，防止按钮被遮挡
         self.remove_overlay_ads(sb)
-        self.log("⏳ 尝试点击续期按钮...")
+        self.log("⏳ 点击续期按钮...")
         button_clicked = False
         try:
             if sb.is_element_visible(EXTEND_BTN):
-                sb.click(EXTEND_BTN)
+                sb.execute_script("arguments[0].click();", sb.find_element(EXTEND_BTN))
                 button_clicked = True
-                self.log("已点击续期按钮")
         except:
             pass
-
         if not button_clicked:
-            try:
-                if sb.is_element_present(EXTEND_BTN):
-                    sb.execute_script("arguments[0].click();", sb.find_element(EXTEND_BTN))
-                    button_clicked = True
-                    self.log("已通过 JS 点击续期按钮")
-            except:
-                pass
+            return False, ""
 
+        time.sleep(2)
+        self.handle_ad_verification(sb)
+
+        # 验证结果
         time.sleep(5)
-        for _ in range(4):
+        for _ in range(6):
             new_ext = self.get_extension_data(sb, server_id)
             if new_ext:
                 new_expiry = new_ext.get("expiredTime", "")
                 if new_expiry and new_expiry != old_expiry:
-                    new_expiry_str = self.format_expiry(new_expiry)
-                    self.log(f"✅ 续期成功确认: {new_expiry_str}")
-                    return True, new_expiry_str
+                    self.log(f"✅ 续期生效: {self.format_expiry(new_expiry)}")
+                    return True, self.format_expiry(new_expiry)
             time.sleep(5)
 
         if sb.is_element_present(EXTEND_BTN) and not sb.is_element_enabled(EXTEND_BTN):
-            self.log("⏳ 续期后按钮进入冷却")
-            new_ext = self.get_extension_data(sb, server_id)
-            if new_ext:
-                new_expiry = new_ext.get("expiredTime", "")
-                if new_expiry and new_expiry != old_expiry:
-                    new_expiry_str = self.format_expiry(new_expiry)
-                    self.log(f"✅ 冷却但续期实际成功: {new_expiry_str}")
-                    return True, new_expiry_str
-            self.log("未检测到新到期时间，判定为冷却")
             return "cooldown", ""
-
-        self.log("⚠️ 无法确认续期结果")
         return False, ""
 
     def format_expiry(self, dt_str):
@@ -355,17 +356,10 @@ class BytenutRenewal:
                 for srv in servers:
                     if srv.get("id") == server_id:
                         state = srv.get("serverInfo", {}).get("state", "unknown")
-                        self.log(f"当前状态: {state}")
                         if state == "running":
                             return True, state
             time.sleep(interval)
-        servers = self.get_servers_data(sb)
-        state = "unknown"
-        if servers:
-            for srv in servers:
-                if srv.get("id") == server_id:
-                    state = srv.get("serverInfo", {}).get("state", "unknown")
-        return False, state
+        return False, "unknown"
 
     def wait_until_not_expired(self, sb, server_id, timeout=120, interval=10):
         deadline = time.time() + timeout
@@ -374,10 +368,8 @@ class BytenutRenewal:
             if ext_info:
                 mins = ext_info.get("minutesUntilExpiration", 0)
                 if mins > 0:
-                    self.log(f"续期生效，距离过期: {mins} 分钟")
                     return True
             time.sleep(interval)
-        self.log("⚠️ 等待续期生效超时")
         return False
 
     def run(self):
@@ -442,7 +434,7 @@ class BytenutRenewal:
                     mins_until_exp = ext_info.get("minutesUntilExpiration", 9999)
                     expired = mins_until_exp <= 0
 
-                    self.log(f"续期状态: 可续期={can_extend}, 冷却剩余={cooldown_min}分钟, 距离过期={mins_until_exp}分钟")
+                    self.log(f"可续期:{can_extend}, 冷却剩余:{cooldown_min}分, 距离过期:{mins_until_exp}分")
 
                     # ========== 离线处理 ==========
                     if state == "offline":
@@ -454,11 +446,10 @@ class BytenutRenewal:
                             time.sleep(3)
                             result, new_time = self.try_extend_and_verify(sb, server_id, expired_time)
                             if result is True:
-                                self.log("✅ 续期成功，等待状态更新...")
                                 if not self.wait_until_not_expired(sb, server_id):
                                     self.send_tg("⚠️", "续期成功但状态未更新", user, server_id,
                                                  "offline", expiry_str,
-                                                 "续期后服务器状态仍未刷新，无法开机，请稍后重试",
+                                                 "无法开机，请稍后重试",
                                                  screenshot=self.shot(sb, f"start_fail_{idx}.png"))
                                     continue
 
@@ -486,7 +477,7 @@ class BytenutRenewal:
                                              screenshot=self.shot(sb, f"extend_fail_{idx}.png"))
                         else:
                             if expired:
-                                extra = "服务器已过期且处于冷却期，无法续期和开机，请稍后再试或手动处理。"
+                                extra = "服务器已过期且处于冷却期，无法续期和开机"
                                 self.send_tg("🚫", "无法操作", user, server_id, state, expiry_str, extra,
                                              screenshot=self.shot(sb, f"expired_cooldown_{idx}.png"))
                             else:
@@ -510,7 +501,7 @@ class BytenutRenewal:
                     if not can_extend:
                         extra = ""
                         if expired:
-                            extra = "服务器已过期，但当前处于冷却期，续期被暂时禁止。"
+                            extra = "服务器已过期，但当前处于冷却期，续期被暂时禁止"
                         self.log(f"⏳ 冷却中 ({cooldown_min}分钟)")
                         self.send_tg("⏳", "冷却中", user, server_id, state, expiry_str, extra,
                                      screenshot=self.shot(sb, f"cooldown_{idx}.png"))
