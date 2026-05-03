@@ -355,7 +355,7 @@ class BytenutRenewal:
             if servers:
                 for srv in servers:
                     if srv.get("id") == server_id:
-                        state = srv.get("serverInfo", {}).get("state", "unknown")
+                        state = (srv.get("serverInfo") or {}).get("state", "unknown")
                         if state == "running":
                             return True, state
             time.sleep(interval)
@@ -417,11 +417,17 @@ class BytenutRenewal:
                         continue
 
                     server = servers[0]
-                    server_id = server.get("id")
-                    state = server.get("serverInfo", {}).get("state", "running")
-                    expired_time = server.get("expiredTime", "")
+                    server_id = server.get("id") or ""
+                    server_info = server.get("serverInfo") or {}
+                    state = server_info.get("state", "running")
+                    expired_time = server.get("expiredTime") or ""
                     expiry_str = self.format_expiry(expired_time)
                     self.log(f"服务器 {self.mask_server_id(server_id)}: 状态 {state}, 到期 {expiry_str}")
+
+                    if not server_id:
+                        self.send_tg("❌", "失败", user, "未知", state, expiry_str,
+                                     "服务器ID无效", self.shot(sb, f"invalid_id_{idx}.png"))
+                        continue
 
                     ext_info = self.get_extension_data(sb, server_id)
                     if not ext_info:
