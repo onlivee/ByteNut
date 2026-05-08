@@ -236,7 +236,7 @@ class BytenutRenewal:
         except:
             return False
 
-    def wait_turnstile(self, sb, timeout=60):
+    def wait_turnstile(self, sb, timeout=45):
         if not self.is_turnstile_present(sb):
             return True
         self.log("⏳ 等待 Turnstile 验证...")
@@ -261,13 +261,13 @@ class BytenutRenewal:
             except:
                 pass
             now = time.time()
-            if now - last_click > 3:
+            if now - last_click > 5:
                 try:
                     sb.uc_gui_click_captcha()
                     last_click = now
                 except:
                     pass
-            time.sleep(1)
+            time.sleep(2)
         self.log("⚠️ Turnstile 超时")
         return False
 
@@ -283,7 +283,7 @@ class BytenutRenewal:
                 var btn = document.querySelector('button.reward-option--watch');
                 if (btn) btn.click();
             """)
-            time.sleep(3)
+            time.sleep(1)
 
             original_window = sb.driver.current_window_handle
             if len(sb.driver.window_handles) > 1:
@@ -291,7 +291,10 @@ class BytenutRenewal:
                     if handle != original_window:
                         sb.driver.switch_to.window(handle)
                         try:
-                            time.sleep(12)
+                            for _ in range(6):
+                                time.sleep(2)
+                                if len(sb.driver.window_handles) == 1:
+                                    break
                         except:
                             pass
                         if len(sb.driver.window_handles) > 1:
@@ -300,7 +303,7 @@ class BytenutRenewal:
                             except:
                                 pass
                         sb.driver.switch_to.window(original_window)
-                        time.sleep(2)
+                        time.sleep(1)
 
             self.log("✅ 扩展奖励选择完成")
             return True
@@ -308,13 +311,53 @@ class BytenutRenewal:
             self.log(f"奖励选择处理异常: {e}")
             return True
 
-    # ---------- 处理广告验证弹窗（原有流程） ----------
+# ---------- 处理广告验证弹窗（原有流程） ----------
     def handle_ad_verification(self, sb):
         """处理 adsterra-rewarded-dialog 弹窗，完成 Watch Ad → 广告页 → Claim Reward"""
         try:
-            # 等待弹窗出现
             if not sb.execute_script("return !!document.querySelector('div.adsterra-rewarded-dialog');"):
                 return True
+            self.log("🛡️ 处理广告验证...")
+            time.sleep(1)
+
+            sb.execute_script("""
+                var btn = document.querySelector('div.adsterra-rewarded-dialog button.el-button--primary');
+                if(btn) btn.click();
+            """)
+            time.sleep(2)
+
+            original_window = sb.driver.current_window_handle
+            if len(sb.driver.window_handles) > 1:
+                for handle in sb.driver.window_handles:
+                    if handle != original_window:
+                        sb.driver.switch_to.window(handle)
+                        try:
+                            for _ in range(6):
+                                time.sleep(2)
+                                if len(sb.driver.window_handles) == 1:
+                                    break
+                        except:
+                            pass
+                        if len(sb.driver.window_handles) > 1:
+                            try:
+                                sb.driver.close()
+                            except:
+                                pass
+                        sb.driver.switch_to.window(original_window)
+                        time.sleep(1)
+            else:
+                self.log("未检测到广告窗口继续...")
+
+            sb.execute_script("""
+                var btn = document.querySelector('div.adsterra-rewarded-dialog button.el-button--success');
+                if(btn) btn.click();
+            """)
+            time.sleep(2)
+            self.log("✅ 广告验证完成")
+            return True
+        except Exception as e:
+            self.log(f"广告验证异常: {e}")
+            return True
             self.log("🛡️ 处理广告验证...")
             time.sleep(1)
 
@@ -411,7 +454,7 @@ class BytenutRenewal:
                     continue
         return dt_str
 
-    def wait_until_running(self, sb, server_id, timeout=300, interval=10):
+    def wait_until_running(self, sb, server_id, timeout=180, interval=10):
         deadline = time.time() + timeout
         while time.time() < deadline:
             servers = self.get_servers_data(sb)
@@ -424,7 +467,7 @@ class BytenutRenewal:
             time.sleep(interval)
         return False, "unknown"
 
-    def wait_until_not_expired(self, sb, server_id, timeout=120, interval=10):
+    def wait_until_not_expired(self, sb, server_id, timeout=90, interval=8):
         deadline = time.time() + timeout
         while time.time() < deadline:
             ext_info = self.get_extension_data(sb, server_id)
@@ -458,7 +501,7 @@ class BytenutRenewal:
                     sb.type('input[placeholder="Username"]', user)
                     sb.type('input[placeholder="Password"]', pwd)
                     sb.click('//button[contains(., "Sign In")]')
-                    time.sleep(5)
+                    time.sleep(3)
                     if "/auth/login" in sb.get_current_url():
                         err = ""
                         try:
@@ -471,7 +514,7 @@ class BytenutRenewal:
                     self.log("✅ 登录成功")
 
                     sb.uc_open_with_reconnect(URL_HOMEPAGE, reconnect_time=6)
-                    time.sleep(5)
+                    time.sleep(3)
 
                     servers = self.get_servers_data(sb)
                     if not servers:
@@ -510,9 +553,9 @@ class BytenutRenewal:
                         if can_extend:
                             self.log("🔴 离线，可续期...")
                             sb.uc_open_with_reconnect(f"https://www.bytenut.com/free-gamepanel/{server_id}", reconnect_time=6)
-                            time.sleep(5)
-                            sb.click(RENEW_MENU)
                             time.sleep(3)
+                            sb.click(RENEW_MENU)
+                            time.sleep(2)
                             result, new_time = self.try_extend_and_verify(sb, server_id, expired_time)
                             if result is True:
                                 if not self.wait_until_not_expired(sb, server_id):
@@ -578,9 +621,9 @@ class BytenutRenewal:
 
                     self.log("✅ 可续期，执行续期")
                     sb.uc_open_with_reconnect(f"https://www.bytenut.com/free-gamepanel/{server_id}", reconnect_time=6)
-                    time.sleep(5)
-                    sb.click(RENEW_MENU)
                     time.sleep(3)
+                    sb.click(RENEW_MENU)
+                    time.sleep(2)
                     result, new_time = self.try_extend_and_verify(sb, server_id, expired_time)
                     if result is True:
                         self.send_tg("✅", "续期成功", user, server_id, state,
