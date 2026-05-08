@@ -273,18 +273,36 @@ class BytenutRenewal:
 
     # ---------- 处理扩展奖励选择弹窗 ----------
     def handle_reward_picker(self, sb):
-        """如果弹出 extend-reward-dialog，点击其中的 Watch Ad 按钮"""
+        """如果弹出 extend-reward-dialog，点击其中的 Watch Ad 按钮并处理广告"""
         try:
             if not sb.execute_script("return !!document.querySelector('.extend-reward-dialog');"):
                 return True
 
             self.log("🛡️ 处理扩展奖励选择...")
-            # 优先通过类名点击 Watch Ad 选项
             sb.execute_script("""
                 var btn = document.querySelector('button.reward-option--watch');
                 if (btn) btn.click();
             """)
-            time.sleep(2)
+            time.sleep(3)
+
+            original_window = sb.driver.current_window_handle
+            if len(sb.driver.window_handles) > 1:
+                for handle in sb.driver.window_handles:
+                    if handle != original_window:
+                        sb.driver.switch_to.window(handle)
+                        try:
+                            time.sleep(12)
+                        except:
+                            pass
+                        if len(sb.driver.window_handles) > 1:
+                            try:
+                                sb.driver.close()
+                            except:
+                                pass
+                        sb.driver.switch_to.window(original_window)
+                        time.sleep(2)
+
+            self.log("✅ 扩展奖励选择完成")
             return True
         except Exception as e:
             self.log(f"奖励选择处理异常: {e}")
