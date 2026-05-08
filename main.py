@@ -558,19 +558,15 @@ class BytenutRenewal:
                             time.sleep(2)
                             result, new_time = self.try_extend_and_verify(sb, server_id, expired_time)
                             if result is True:
-                                if not self.wait_until_not_expired(sb, server_id):
-                                    self.send_tg("⚠️", "续期成功但状态未更新", user, server_id,
-                                                 "offline", expiry_str,
-                                                 "无法开机，请稍后重试",
-                                                 screenshot=self.shot(sb, f"start_fail_{idx}.png"))
-                                    continue
-
+                                time.sleep(3)
+                                state_updated = self.wait_until_not_expired(sb, server_id)
                                 if self.api_start_server(sb, server_id):
                                     is_running, final_state = self.wait_until_running(sb, server_id)
                                     if is_running:
+                                        status_str = "offline -> running" if not state_updated else f"offline -> running ({expiry_str} -> {new_time})"
                                         self.send_tg("✅", "续期并开机成功", user, server_id,
-                                                     "offline -> running",
-                                                     f"{expiry_str} -> {new_time}",
+                                                     status_str,
+                                                     new_time if state_updated else expiry_str,
                                                      screenshot=self.shot(sb, f"ok_{idx}.png"))
                                     else:
                                         self.send_tg("⚠️", "续期成功，开机未确认", user, server_id,
@@ -626,9 +622,29 @@ class BytenutRenewal:
                     time.sleep(2)
                     result, new_time = self.try_extend_and_verify(sb, server_id, expired_time)
                     if result is True:
-                        self.send_tg("✅", "续期成功", user, server_id, state,
-                                     f"{expiry_str} -> {new_time}",
-                                     screenshot=self.shot(sb, f"ok_{idx}.png"))
+                        if state == "offline":
+                            time.sleep(3)
+                            self.wait_until_not_expired(sb, server_id)
+                            if self.api_start_server(sb, server_id):
+                                is_running, final_state = self.wait_until_running(sb, server_id)
+                                if is_running:
+                                    self.send_tg("✅", "续期并开机成功", user, server_id,
+                                                 f"offline -> running",
+                                                 f"{expiry_str} -> {new_time}",
+                                                 screenshot=self.shot(sb, f"ok_{idx}.png"))
+                                else:
+                                    self.send_tg("⚠️", "续期成功，开机未确认", user, server_id,
+                                                 f"offline -> {final_state}",
+                                                 new_time,
+                                                 screenshot=self.shot(sb, f"start_timeout_{idx}.png"))
+                            else:
+                                self.send_tg("✅", "续期成功，开机失败", user, server_id,
+                                             "offline", new_time,
+                                             screenshot=self.shot(sb, f"start_fail_{idx}.png"))
+                        else:
+                            self.send_tg("✅", "续期成功", user, server_id, state,
+                                         f"{expiry_str} -> {new_time}",
+                                         screenshot=self.shot(sb, f"ok_{idx}.png"))
                     elif result == "cooldown":
                         self.send_tg("⏳", "续期后进入冷却", user, server_id, state, expiry_str,
                                      screenshot=self.shot(sb, f"cooldown_{idx}.png"))
