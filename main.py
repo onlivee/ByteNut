@@ -578,12 +578,22 @@ class BytenutRenewal:
             except Exception as e:
                 self.log(f"Console 点击失败: {e}")
 
-        # Step 3: 等待 Start 按钮
-        try:
-            sb.wait_for_element_present(START_BTN, timeout=15)
+        # Step 3: 等待 Start 按钮（带弹窗处理）
+        self.log("⏳ 等待 Start 按钮...")
+        start_found = False
+        for _ in range(30):
+            self.remove_overlay_ads(sb)
+            try:
+                if sb.is_element_present(START_BTN):
+                    start_found = True
+                    break
+            except Exception:
+                pass
+            time.sleep(1)
+        if start_found:
             self.log("✅ Console 页面就绪")
-        except Exception as e:
-            self.log(f"⚠️ 等待 Start 超时: {e}")
+        else:
+            self.log("⚠️ 等待 Start 超时（可能被弹窗遮挡）")
             self.shot(sb, f"no_start_btn_{idx}.png")
             return False, "no_start_btn"
 
