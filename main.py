@@ -296,9 +296,10 @@ class BytenutRenewal:
                      'div[class*="ad-"]:not([class*="adsterra-rewarded"])',
                      'div[class*="ads-"]',
                      'div[id*="ad-"]:not([id*="adsterra"])',
-                     'div[id*="ads-"]','.ad-container','.ads-wrapper',
-                     '.fixed-bottom-banner','.ezoic-floating-bottom',
-                     '.fc-ab-root'
+                    'div[id*="ads-"]','.ad-container','.ads-wrapper',
+                    '.fixed-bottom-banner','.ezoic-floating-bottom',
+                    '.fc-ab-root','.adblock-overlay',
+                    '.adblock-overlay-card','.adblock-overlay-btn'
                     ].forEach(function(s){
                         document.querySelectorAll(s).forEach(function(el){
                             if (keep.some(function(k){
