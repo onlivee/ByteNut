@@ -810,10 +810,21 @@ class BytenutRenewal:
 
                     # 停留 homepage 让 CF cookie 稳定
                     sb.uc_open_with_reconnect(URL_HOMEPAGE, reconnect_time=6)
-                    time.sleep(8)
+                    time.sleep(5)
+                    for _ in range(6):
+                        if "homepage" in sb.get_current_url():
+                            break
+                        self.log("⏳ 等待 homepage 加载...")
+                        time.sleep(5)
 
-                    # --- 获取服务器信息 ---
-                    servers = self.get_servers_data(sb)
+                    # --- 获取服务器信息（带重试）---
+                    servers = None
+                    for retry in range(3):
+                        servers = self.get_servers_data(sb)
+                        if servers:
+                            break
+                        self.log(f"⚠️ 获取服务器信息失败，重试 {retry+1}/3...")
+                        time.sleep(5)
                     if not servers:
                         self.send_tg("⚠️", "警告", user, "未知",
                                      "未知", "API 请求失败",
