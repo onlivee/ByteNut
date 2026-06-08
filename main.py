@@ -475,6 +475,17 @@ class BytenutRenewal:
             self.log(f"广告验证异常: {e}")
             return True
 
+    def _close_ad_windows(self, sb):
+        try:
+            orig = sb.driver.current_window_handle
+            for h in sb.driver.window_handles:
+                if h != orig:
+                    sb.driver.switch_to.window(h)
+                    sb.driver.close()
+            sb.driver.switch_to.window(orig)
+        except Exception:
+            pass
+
     # ========== 导航 + 等待就绪 ==========
     def navigate_to_panel(self, sb, server_id):
         url = f"https://www.bytenut.com/free-gamepanel/{server_id}"
@@ -508,6 +519,18 @@ class BytenutRenewal:
         if not self.wait_turnstile(sb):
             return False, ""
         self.remove_overlay_ads(sb)
+
+        # 处理广告页面跳转
+        self.handle_ad_verification(sb)
+        if "free-gamepanel" not in sb.get_current_url():
+            self.log("⚠️ 页面被广告跳转，关闭广告页并重新导航...")
+            self._close_ad_windows(sb)
+            self.navigate_to_panel(sb, server_id)
+            self.wait_for_panel_ready(sb, server_id, timeout=20)
+            if not self.click_renew_menu(sb, server_id, 0):
+                self.log("❌ 重新导航后 RENEW SERVER 仍失败")
+                return False, ""
+
         self.log("⏳ 点击续期按钮...")
         try:
             if sb.is_element_visible(EXTEND_BTN):
