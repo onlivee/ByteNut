@@ -30,8 +30,7 @@ API_START_STATUS = "https://www.bytenut.com/game-panel/api/serverStartQueue/stat
 
 RENEW_MENU = '//li[contains(., "RENEW SERVER")]'
 EXTEND_BTN = "button.extend-btn"
-START_STOP_MENU = '//span[text()="Start / Stop"]'
-START_BTN = "button.ss-action.ss-action--start"
+START_BTN = "button.start-btn"
 START_VERIFY_DIALOG = "div.el-dialog"
 MANAGEMENT_MENU = '//li[contains(@class,"el-sub-menu")]//span[text()="Management"]'
 CONSOLE_MENU_ITEM = '//li[contains(@class,"el-menu-item")]//span[text()="Console"]'
@@ -296,10 +295,9 @@ class BytenutRenewal:
                      'div[class*="ad-"]:not([class*="adsterra-rewarded"])',
                      'div[class*="ads-"]',
                      'div[id*="ad-"]:not([id*="adsterra"])',
-                    'div[id*="ads-"]','.ad-container','.ads-wrapper',
-                    '.fixed-bottom-banner','.ezoic-floating-bottom',
-                    '.fc-ab-root','.adblock-overlay',
-                    '.adblock-overlay-card','.adblock-overlay-btn'
+                     'div[id*="ads-"]','.ad-container','.ads-wrapper',
+                     '.fixed-bottom-banner','.ezoic-floating-bottom',
+                     '.fc-ab-root'
                     ].forEach(function(s){
                         document.querySelectorAll(s).forEach(function(el){
                             if (keep.some(function(k){
@@ -580,43 +578,16 @@ class BytenutRenewal:
             except Exception as e:
                 self.log(f"Console 点击失败: {e}")
 
-        # Step 3: 点击左侧 Start / Stop
-        self.log("📂 点击 Start / Stop...")
+        # Step 3: 等待 Start 按钮
         try:
-            sb.click(START_STOP_MENU)
-            time.sleep(2)
-        except Exception:
-            try:
-                sb.execute_script("""
-                    document.querySelectorAll('span').forEach(function(el){
-                        if (el.textContent.trim() === 'Start / Stop')
-                            el.click();
-                    });
-                """)
-                time.sleep(2)
-            except Exception as e:
-                self.log(f"Start / Stop 点击失败: {e}")
-
-        # Step 4: 等待 Start 按钮（带弹窗处理）
-        self.log("⏳ 等待 Start 按钮...")
-        start_found = False
-        for _ in range(30):
-            self.remove_overlay_ads(sb)
-            try:
-                if sb.is_element_present(START_BTN):
-                    start_found = True
-                    break
-            except Exception:
-                pass
-            time.sleep(1)
-        if start_found:
+            sb.wait_for_element_present(START_BTN, timeout=15)
             self.log("✅ Console 页面就绪")
-        else:
-            self.log("⚠️ 等待 Start 超时（可能被弹窗遮挡）")
+        except Exception as e:
+            self.log(f"⚠️ 等待 Start 超时: {e}")
             self.shot(sb, f"no_start_btn_{idx}.png")
             return False, "no_start_btn"
 
-        # Step 5: 点击 Start
+        # Step 4: 点击 Start
         self.log("▶️ 点击 Start...")
         self.remove_overlay_ads(sb)
         try:
@@ -634,7 +605,7 @@ class BytenutRenewal:
             self.log(f"Start 点击失败: {e}")
             return False, "start_click_fail"
 
-        # Step 6: 等待验证弹窗（最多 10s）
+        # Step 5: 等待验证弹窗（最多 10s）
         self.log("⏳ 等待验证弹窗...")
         dialog_appeared = False
         for _ in range(10):
@@ -657,10 +628,10 @@ class BytenutRenewal:
 
         self.log("✅ 验证弹窗出现")
 
-        # Step 7: 等待 Turnstile
+        # Step 6: 等待 Turnstile
         self._wait_dialog_turnstile(sb, timeout=30)
 
-        # Step 8: 点击 Continue（最多 60s）
+        # Step 7: 点击 Continue（最多 60s）
         self.log("▶️ 等待并点击 Continue...")
         continue_clicked = False
         for attempt in range(30):
@@ -694,10 +665,10 @@ class BytenutRenewal:
 
         time.sleep(3)
 
-        # Step 9: 处理排队弹窗
+        # Step 8: 处理排队弹窗
         self._handle_queue_dialog(sb)
 
-        # Step 10: 轮询开机状态
+        # Step 9: 轮询开机状态
         self.log("⏳ 轮询开机状态...")
         ok, state = self.poll_start_status(
             sb, server_id, timeout=300, interval=5)
