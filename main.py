@@ -530,6 +530,7 @@ class BytenutRenewal:
             if not self.click_renew_menu(sb, server_id, 0):
                 self.log("❌ 重新导航后 RENEW SERVER 仍失败")
                 return False, ""
+            self.wait_turnstile(sb)
 
         self.log("⏳ 点击续期按钮...")
         try:
